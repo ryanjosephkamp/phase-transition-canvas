@@ -53,10 +53,10 @@ class PhaseInfo:
 
 
 # Phase boundaries in reduced units (approximate)
-# These are for 2D LJ, actual values depend on density
-SOLID_LIQUID_TEMP = 0.4  # Below this is solid
-LIQUID_GAS_TEMP = 0.8    # Above this is gas (at low density)
-CRITICAL_TEMP = 1.0      # Critical temperature
+# These match the app.py PHASE_TEMP_RANGES
+SOLID_LIQUID_TEMP = 0.25  # Below this is solid
+LIQUID_GAS_TEMP = 0.9     # Above this is gas
+CRITICAL_TEMP = 1.5       # Critical temperature
 
 
 def identify_phase(
@@ -67,7 +67,7 @@ def identify_phase(
     """
     Identify the phase based on temperature, density, and order.
     
-    Uses a simplified phase diagram for 2D Lennard-Jones.
+    Uses simplified temperature-based thresholds that match the UI.
     
     Args:
         temperature: System temperature in reduced units
@@ -77,33 +77,36 @@ def identify_phase(
     Returns:
         PhaseInfo with phase identification and description
     """
-    # Low temperature, high order = solid
-    if temperature < SOLID_LIQUID_TEMP and order_parameter > 0.6:
+    # Primary classification by temperature (matches UI ranges)
+    # Solid: T < 0.25
+    # Liquid: 0.25 <= T <= 0.9  
+    # Gas: T > 0.9
+    
+    if temperature < SOLID_LIQUID_TEMP:
         return PhaseInfo(
             phase=Phase.SOLID,
             order_parameter=order_parameter,
             local_density=density,
             temperature=temperature,
-            description=f"Solid phase: Low T ({temperature:.2f}), high order ({order_parameter:.2f})"
+            description=f"Solid phase: T={temperature:.2f} < {SOLID_LIQUID_TEMP}"
         )
     
-    # High temperature, low density = gas
-    if temperature > LIQUID_GAS_TEMP and density < 0.3:
+    if temperature > LIQUID_GAS_TEMP:
         return PhaseInfo(
             phase=Phase.GAS,
             order_parameter=order_parameter,
             local_density=density,
             temperature=temperature,
-            description=f"Gas phase: High T ({temperature:.2f}), low density ({density:.2f})"
+            description=f"Gas phase: T={temperature:.2f} > {LIQUID_GAS_TEMP}"
         )
     
-    # Everything else = liquid
+    # Middle range = liquid
     return PhaseInfo(
         phase=Phase.LIQUID,
         order_parameter=order_parameter,
         local_density=density,
         temperature=temperature,
-        description=f"Liquid phase: T={temperature:.2f}, ρ={density:.2f}, ψ={order_parameter:.2f}"
+        description=f"Liquid phase: {SOLID_LIQUID_TEMP} <= T={temperature:.2f} <= {LIQUID_GAS_TEMP}"
     )
 
 

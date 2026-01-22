@@ -143,6 +143,71 @@ def initialize_session_state():
         st.session_state.brush_radius = 3.0
     if 'brush_intensity' not in st.session_state:
         st.session_state.brush_intensity = 0.5
+    # Initial state and temperature synchronization
+    if 'initial_state' not in st.session_state:
+        st.session_state.initial_state = "Crystal (Solid)"
+    if 'initial_temp' not in st.session_state:
+        st.session_state.initial_temp = 0.15  # Default for solid
+
+
+# Temperature ranges for each phase (in reduced units)
+PHASE_TEMP_RANGES = {
+    "Crystal (Solid)": {"min": 0.05, "max": 0.25, "default": 0.15},
+    "Random (Liquid)": {"min": 0.3, "max": 0.9, "default": 0.5},
+    "Hot Gas": {"min": 1.0, "max": 2.0, "default": 1.2},
+}
+
+
+def get_phase_from_temp(temp: float) -> str:
+    """Determine which initial state corresponds to a temperature."""
+    if temp <= 0.25:
+        return "Crystal (Solid)"
+    elif temp <= 0.9:
+        return "Random (Liquid)"
+    else:
+        return "Hot Gas"
+
+
+def on_state_change():
+    """Callback when initial state dropdown changes."""
+    state = st.session_state.state_selector
+    st.session_state.initial_state = state
+    # Set temperature to the default for this phase
+    new_temp = PHASE_TEMP_RANGES[state]["default"]
+    st.session_state.initial_temp = new_temp
+    # Also update the slider key directly so it reflects the change
+    st.session_state.temp_slider = new_temp
+
+
+def on_temp_change():
+    """Callback when temperature slider changes."""
+    temp = st.session_state.temp_slider
+    st.session_state.initial_temp = temp
+    # Update the state based on temperature
+    new_state = get_phase_from_temp(temp)
+    st.session_state.initial_state = new_state
+    # Also update the selectbox key directly so it reflects the change
+    st.session_state.state_selector = new_state
+
+
+def format_number(value: float, precision: int = 3) -> str:
+    """
+    Format a number using scientific notation for very large or small values.
+    
+    Args:
+        value: The number to format
+        precision: Number of decimal places
+        
+    Returns:
+        Formatted string
+    """
+    abs_val = abs(value)
+    if abs_val == 0:
+        return "0.000"
+    elif abs_val >= 1000 or abs_val < 0.01:
+        return f"{value:.{precision}e}"
+    else:
+        return f"{value:.{precision}f}"
 
 
 def create_simulation(
@@ -181,23 +246,44 @@ def render_sidebar():
     """Render the sidebar with controls."""
     st.sidebar.title("🔬 Phase Transition Canvas")
     
-    st.sidebar.markdown("""
-    ---
-    ### About This Simulation
+    # Collapsible explanation for general audience
+    with st.sidebar.expander("ℹ️ What is this simulation?", expanded=False):
+        st.markdown("""
+        ### Understanding Phase Transitions
+        
+        This simulation shows how **matter changes between solid, liquid, and gas** 
+        at the atomic level. You're watching individual "atoms" (the colored dots) 
+        interact with each other!
+        
+        #### 🧊 The Three Phases
+        - **Solid (Blue)**: Atoms vibrate in fixed positions, like ice
+        - **Liquid (Purple)**: Atoms flow past each other, like water
+        - **Gas (Red)**: Atoms fly freely, like steam
+        
+        #### 🎯 How It Works
+        Each atom attracts nearby atoms (like magnets) but repels if they get 
+        too close. This creates the **Lennard-Jones potential**, a fundamental 
+        model in physics and chemistry.
+        
+        **Temperature** is just how fast the atoms are moving! When you "paint" 
+        heat onto the simulation, you're speeding up the atoms in that region.
+        
+        #### 🌍 Real-World Applications
+        - **Drug Design**: Understanding how proteins fold (they're made of atoms!)
+        - **Materials Science**: Designing stronger metals and new materials
+        - **Climate Science**: Modeling how water evaporates and condenses
+        - **Food Science**: Why ice cream melts, how chocolate tempers
+        - **Cryogenics**: How gases become liquids for medical/industrial use
+        
+        #### 🎮 Try This!
+        1. Start with a **Crystal (Solid)** at low temperature
+        2. Click **Run** to watch atoms vibrate in place
+        3. **Pause** and click on the simulation to add heat
+        4. Watch the crystal **melt** into a liquid!
+        5. Add more heat to see it become a **gas**
+        """)
     
-    This interactive simulation demonstrates **phase transitions** in a 
-    2D Lennard-Jones particle system. The particles interact via the
-    Lennard-Jones potential:
-    
-    $$V(r) = 4\\epsilon \\left[ \\left(\\frac{\\sigma}{r}\\right)^{12} - \\left(\\frac{\\sigma}{r}\\right)^6 \\right]$$
-    
-    **Paint temperature** onto regions to watch matter transition between:
-    - 🔵 **Solid**: Low temperature, ordered structure
-    - 🟣 **Liquid**: Intermediate temperature, disordered but dense
-    - 🔴 **Gas**: High temperature, dispersed particles
-    
-    ---
-    """)
+    st.sidebar.markdown("---")
     
     # Simulation Setup
     st.sidebar.subheader("⚙️ Simulation Setup")
@@ -214,20 +300,36 @@ def render_sidebar():
         help="Size of the simulation box"
     )
     
+    # Get current state index for selectbox
+    state_options = ["Crystal (Solid)", "Random (Liquid)", "Hot Gas"]
+    current_state_idx = state_options.index(st.session_state.initial_state)
+    
     initial_state = st.sidebar.selectbox(
         "Initial State",
-        ["Crystal (Solid)", "Random (Liquid)", "Hot Gas"],
-        help="Starting configuration"
+        state_options,
+        index=current_state_idx,
+        key="state_selector",
+        on_change=on_state_change,
+        help="Starting configuration - automatically sets appropriate temperature"
+    )
+    
+    # Show phase temperature ranges
+    st.sidebar.caption(
+        "🔵 Solid: T < 0.25 | 🟣 Liquid: 0.25-0.9 | 🔴 Gas: T > 1.0"
     )
     
     initial_temp = st.sidebar.slider(
         "Initial Temperature",
-        min_value=0.05, max_value=2.0, value=0.2, step=0.05,
-        help="Starting temperature (reduced units)"
+        min_value=0.05, max_value=2.0, 
+        value=st.session_state.initial_temp, 
+        step=0.05,
+        key="temp_slider",
+        on_change=on_temp_change,
+        help="Starting temperature - automatically updates initial state"
     )
     
     if st.sidebar.button("🚀 Initialize Simulation", use_container_width=True):
-        sim = create_simulation(n_particles, box_size, initial_state, initial_temp)
+        sim = create_simulation(n_particles, box_size, st.session_state.initial_state, st.session_state.initial_temp)
         st.session_state.simulation = sim
         st.session_state.step_count = 0
         st.session_state.temperature_history = []
@@ -555,13 +657,11 @@ def render_main_content():
         n_particles = len(state.positions)
         density = n_particles / (sim.config.box_size[0] * sim.config.box_size[1])
         
-        # Order parameter (simplified - use subset for speed)
-        order_param = 0.5  # Default
-        if n_particles <= 200:
-            from src.thermodynamics import calculate_global_order_parameter
-            order_param = calculate_global_order_parameter(
-                state.positions, sim.config.box_size
-            )
+        # Always calculate order parameter for accurate phase detection
+        from src.thermodynamics import calculate_global_order_parameter
+        order_param = calculate_global_order_parameter(
+            state.positions, sim.config.box_size
+        )
         
         # Identify phase
         phase_info = identify_phase(temp, density, order_param)
@@ -575,18 +675,18 @@ def render_main_content():
         
         met1, met2 = st.columns(2)
         with met1:
-            st.metric("Temperature", f"{temp:.3f}")
+            st.metric("Temperature", format_number(temp))
         with met2:
             st.metric("Order (ψ₆)", f"{order_param:.3f}")
         
         met3, met4 = st.columns(2)
         with met3:
-            st.metric("KE", f"{state.kinetic_energy:.2f}")
+            st.metric("KE", format_number(state.kinetic_energy, 2))
         with met4:
-            st.metric("PE", f"{state.potential_energy:.2f}")
+            st.metric("PE", format_number(state.potential_energy, 2))
         
-        st.metric("Total Energy", f"{state.total_energy:.2f}")
-        st.metric("Density", f"{density:.3f}")
+        st.metric("Total Energy", format_number(state.total_energy, 2))
+        st.metric("Density", format_number(density))
         
         # Temperature history plot
         if len(st.session_state.temperature_history) > 1:
